@@ -1,26 +1,32 @@
 <j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
   <f:block>
   
-    <f:entry title="${%Analytics Server Ip}" field="serverIp">
-       <f:textbox default="0.0.0.0" value="${instance.serverIp}" />
+    <f:entry title="${%Build Analytics Server}" field="serverIp"
+             description="Build Analytics Server with port - eg: http://127.0.0.1:5555/analytics">
+       <f:textbox default="http://127.0.0.1:5555/analytics" value="${instance.serverIp}" />
     </f:entry>
     
-    <f:entry title="${%Build Type}" field="buildStageType">
-       <f:textbox default="Type of build - eg: java-maven-build" value="${instance.buildStageType}" />
+    <f:entry title="${%Build Type}" field="buildStageType"
+             description="Type of Build of the Job - eg: java-maven-build">
+       <f:textbox default="java-maven-build" value="${instance.buildStageType}" />
     </f:entry>
 
-	<f:entry title="${%Filebeats directory}" field="filebeatsDirectory">
-       <f:textbox default="Path of directory being monitored by Filebeats" value="${instance.filebeatsDirectory}" />
+	<f:entry title="${%Filebeats directory}" field="filebeatsDirectory"
+	         description="Filebeats Directory to store logs. Make sure Filebeat is running in slaves
+	         configured to this directory.">
+       <f:textbox default="/tmp/bap_logs" value="${instance.filebeatsDirectory}" />
     </f:entry>
 	
-	 <f:entry title="${%Additional Prefix}" field="userPrefix">
-       <f:textbox default="default" value="${instance.userPrefix}" />
+	 <f:entry title="${%Additional Prefix}" field="userPrefix"
+	          description="Additional prefix for the console log file - eg: console">
+       <f:textbox default="console" value="${instance.userPrefix}" />
     </f:entry>
-    
-    <f:entry title="${%Jenkins Server Address}" field="jenkinsServerIp">
-       <f:textbox default="" value="${instance.jenkinsServerIp}" />
+
+    <f:entry title="${%Jenkins Server}" field="jenkinsServer"
+             description="Jenkins Master Server">
+       <f:textbox default="" value="${instance.jenkinsServer}" />
     </f:entry>
-    
+
      <f:entry title="${%Upload only when build fails}" field="uploadOnlyOnFail">
        <f:checkbox checked="${instance.uploadOnlyOnFail}" />
     </f:entry>

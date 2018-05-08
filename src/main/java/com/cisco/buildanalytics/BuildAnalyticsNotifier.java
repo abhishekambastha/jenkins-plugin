@@ -24,30 +24,11 @@
 
 package com.cisco.buildanalytics;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.logging.Logger;
-
-import org.jenkinsci.Symbol;
-import org.kohsuke.stapler.DataBoundConstructor;
-
 import com.google.gson.Gson;
-
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
-import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
-import hudson.model.BuildListener;
 import hudson.model.Result;
 import hudson.model.Run;
 import hudson.model.TaskListener;
@@ -56,6 +37,17 @@ import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
 import jenkins.tasks.SimpleBuildStep;
+import org.jenkinsci.Symbol;
+import org.kohsuke.stapler.DataBoundConstructor;
+
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.logging.Logger;
 
 public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep {
 
@@ -67,25 +59,20 @@ public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep 
 	public String buildStageType;
 	public String filebeatsDirectory;
 	public String userPrefix;
-	public String jenkinsServerIp;
+	public String jenkinsServer;
 	public boolean uploadOnlyOnFail;
 	public boolean failBuild;
 
 	@DataBoundConstructor
 	public BuildAnalyticsNotifier(String serverIp, String buildStageType, String filebeatsDirectory, String userPrefix,
-			String jenkinsServerIp, boolean uploadOblyOnFail, boolean failBuild) {
+								  String jenkinsServer, boolean uploadOblyOnFail, boolean failBuild) {
 		this.serverIp = serverIp;
 		this.buildStageType = buildStageType;
 		this.filebeatsDirectory = filebeatsDirectory;
 		this.userPrefix = userPrefix;
-		this.jenkinsServerIp = jenkinsServerIp;
+		this.jenkinsServer = jenkinsServer;
 		this.uploadOnlyOnFail = uploadOblyOnFail;
 		this.failBuild = failBuild;
-	}
-
-	@Override
-	public boolean perform(AbstractBuild<?, ?> build, Launcher launcher, BuildListener listener) {
-		return perform(build, listener);
 	}
 
 	@Override
@@ -96,7 +83,7 @@ public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep 
 	@Override
 	public void perform(Run<?, ?> run, FilePath workspace, Launcher launcher, TaskListener listener)
 			throws InterruptedException, IOException {
-		if (!perform(run, listener)) {
+		if (!perform(run, workspace, listener)) {
 			run.setResult(Result.FAILURE);
 		}
 	}
@@ -110,15 +97,21 @@ public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep 
 		}
 	}
 
-	private void invokeAnalyticsAPI(String buildUrl, String filename) {
+	private void invokeAnalyticsAPI(String buildUrl, String filename, String buildDisplayName, int buildNumber) {
 		BuildParamsDTO dto = new BuildParamsDTO();
-		dto.setBuildStageType(this.buildStageType);
-		dto.setFileName(filename);
-		dto.setJenkinsServerIp(this.jenkinsServerIp);
-		dto.setBuildUrl(buildUrl);
-		String result = gson.toJson(dto);
 
+		dto.setBuildStageType(this.buildStageType);
+		dto.setJenkinsServer(this.jenkinsServer);
+		dto.setPrefixUser(this.userPrefix);
+		dto.setFileName(filename);
+		dto.setBuildUrl(buildUrl);
+		dto.setBuildDisplayName(buildDisplayName);
+		dto.setBuildNumber(buildNumber);
+
+		String result = gson.toJson(dto);
 		LOG.info("DTO: " + result);
+
+		// Post to Build Analytics Service
 		postRequest(result);
 	}
 
@@ -151,11 +144,10 @@ public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep 
 
 	}
 
-	private boolean perform(Run<?, ?> run, TaskListener listener) {
+	private boolean perform(Run<?, ?> run, FilePath workspace, TaskListener listener) {
 		LOG.info("Build Analytics Plugin - Running");
-		LOG.info("Parameters " + this.serverIp + this.uploadOnlyOnFail + this.buildStageType + this.jenkinsServerIp
-				+ this.userPrefix);
-
+		LOG.info("Parameters:  " + this.serverIp + ", " + this.uploadOnlyOnFail + ", " + this.buildStageType
+				+ ", " + this.userPrefix);
 		boolean success = false;
 		Result r = run.getResult();
 		if (r != null) {
@@ -166,13 +158,14 @@ public class BuildAnalyticsNotifier extends Notifier implements SimpleBuildStep 
 
 		if (!this.uploadOnlyOnFail || (this.uploadOnlyOnFail && !success)) {
 			File file = run.getLogFile();
-			String filename = this.userPrefix + "-x-" + this.buildStageType + "-x-" + run.getId();
-			Path newLink = Paths.get(this.filebeatsDirectory + "/" + filename + ".log");
-			Path target = Paths.get(file.getAbsolutePath());
-			createSymbolicLink(newLink, target);
+			String filename = this.userPrefix + "_" + this.buildStageType + "_" + run.getId() + "_" +
+					Long.toString(Instant.now().getEpochSecond()) + "_bap.log";
 
-			String buildUrl = run.getUrl();
-			invokeAnalyticsAPI(buildUrl, filename);
+			// Writes Console Log to the Workspace
+			ConsoleLogToFilebeats.perform(run, workspace, listener,
+					filename, this.filebeatsDirectory);
+
+			invokeAnalyticsAPI(run.getUrl(), filename, run.getFullDisplayName(), run.getNumber());
 		} else {
 			LOG.info("Skipping upload as requested");
 		}
